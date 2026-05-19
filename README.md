@@ -12,17 +12,17 @@ npm install
 ## Low-level API
 
 ```js
-const pipewire = require('xcraft-pipewire');
+const pipewire = require("xcraft-pipewire");
 
 const stream = pipewire.openInputStream(
-  'alsa_input.example.source',
+  "alsa_input.example.source",
   1,
-  'f32',
+  "f32",
   48000,
   1024,
   (buffer, info) => {
     console.log(buffer.length, info);
-  }
+  },
 );
 
 stream.close();
@@ -33,7 +33,7 @@ The low-level API starts capture immediately.
 ## Audify-compatible backend
 
 ```js
-const PipeWire = require('xcraft-pipewire/lib/audify-compatible');
+const PipeWire = require("xcraft-pipewire/lib/backend.js");
 
 const audio = new PipeWire();
 const devices = audio.getDevices();
@@ -46,8 +46,8 @@ audio.openInputStream(
   input.sampleRate,
   1024,
   (buffer, info) => {
-    console.log('callback', buffer.length, info);
-  }
+    console.log("callback", buffer.length, info);
+  },
 );
 
 // openInputStream only configures the stream.
@@ -61,12 +61,12 @@ audio.closeStream();
 The audify-compatible backend is an `EventEmitter`:
 
 ```js
-audio.on('open', (info) => console.log('configured', info));
-audio.on('start', () => console.log('started'));
-audio.on('data', (buffer, info) => console.log('data', buffer.length, info));
-audio.on('stop', () => console.log('stopped'));
-audio.on('close', () => console.log('closed'));
-audio.on('error', (error) => console.error(error));
+audio.on("open", (info) => console.log("configured", info));
+audio.on("start", () => console.log("started"));
+audio.on("data", (buffer, info) => console.log("data", buffer.length, info));
+audio.on("stop", () => console.log("stopped"));
+audio.on("close", () => console.log("closed"));
+audio.on("error", (error) => console.error(error));
 ```
 
 ## Devices
@@ -79,18 +79,18 @@ Each returned device is shaped like:
 
 ```js
 {
-  id,
-  nativeId,
-  name,
-  nodeName,
-  inputChannels,
-  outputChannels,
-  sampleRate,
-  isDefaultInput,
-  isDefaultOutput,
-  isCapture,
-  isSink,
-  raw
+  (id,
+    nativeId,
+    name,
+    nodeName,
+    inputChannels,
+    outputChannels,
+    sampleRate,
+    isDefaultInput,
+    isDefaultOutput,
+    isCapture,
+    isSink,
+    raw);
 }
 ```
 
