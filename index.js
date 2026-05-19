@@ -1,8 +1,8 @@
-'use strict';
+"use strict";
 
 function loadNative() {
   try {
-    return require('./build/Release/xcraft_pipewire.node');
+    return require("./build/Release/xcraft_pipewire.node");
   } catch (error) {
     const message = `Native addon is not built or cannot be loaded: ${error.message}`;
 
@@ -30,7 +30,7 @@ class InputStream {
 
     this.closed = true;
 
-    if (this._nativeStream && typeof this._nativeStream.close === 'function') {
+    if (this._nativeStream && typeof this._nativeStream.close === "function") {
       this._nativeStream.close();
     }
 
@@ -42,15 +42,15 @@ class InputStream {
   }
 }
 
-const SUPPORTED_FORMATS = new Set(['f32', 'float32', 's16', 'int16']);
+const SUPPORTED_FORMATS = new Set(["f32", "float32", "s16", "int16"]);
 
 function normalizeDeviceId(deviceId) {
   if (deviceId == null) {
-    return '';
+    return "";
   }
 
-  if (typeof deviceId !== 'string') {
-    throw new TypeError('deviceId must be a string, null or undefined');
+  if (typeof deviceId !== "string") {
+    throw new TypeError("deviceId must be a string, null or undefined");
   }
 
   return deviceId;
@@ -67,10 +67,12 @@ function normalizePositiveInteger(value, name, fallback) {
 }
 
 function normalizeSampleFormat(sampleFormat) {
-  const resolved = sampleFormat == null ? 'f32' : sampleFormat;
+  const resolved = sampleFormat == null ? "f32" : sampleFormat;
 
-  if (typeof resolved !== 'string' || !SUPPORTED_FORMATS.has(resolved)) {
-    throw new TypeError("sampleFormat must be one of: 'f32', 'float32', 's16', 'int16'");
+  if (typeof resolved !== "string" || !SUPPORTED_FORMATS.has(resolved)) {
+    throw new TypeError(
+      "sampleFormat must be one of: 'f32', 'float32', 's16', 'int16'",
+    );
   }
 
   return resolved;
@@ -83,16 +85,16 @@ function normalizeNodes(nodes) {
 
   return nodes.map((node) => ({
     id: Number(node.id),
-    name: String(node.name || ''),
-    description: String(node.description || ''),
-    mediaClass: String(node.mediaClass || ''),
-    mediaType: String(node.mediaType || ''),
-    mediaCategory: String(node.mediaCategory || ''),
-    nodeNick: String(node.nodeNick || ''),
-    deviceId: String(node.deviceId || ''),
-    alsaCardName: String(node.alsaCardName || ''),
-    alsaCard: String(node.alsaCard || ''),
-    objectPath: String(node.objectPath || ''),
+    name: String(node.name || ""),
+    description: String(node.description || ""),
+    mediaClass: String(node.mediaClass || ""),
+    mediaType: String(node.mediaType || ""),
+    mediaCategory: String(node.mediaCategory || ""),
+    nodeNick: String(node.nodeNick || ""),
+    deviceId: String(node.deviceId || ""),
+    alsaCardName: String(node.alsaCardName || ""),
+    alsaCard: String(node.alsaCard || ""),
+    objectPath: String(node.objectPath || ""),
     audioChannels: Number(node.audioChannels || 0),
     audioRate: Number(node.audioRate || 0),
     isAudio: Boolean(node.isAudio),
@@ -102,8 +104,8 @@ function normalizeNodes(nodes) {
 }
 
 function createApi(native) {
-  if (!native || typeof native.openInputStream !== 'function') {
-    throw new Error('Invalid native xcraft_pipewire addon');
+  if (!native || typeof native.openInputStream !== "function") {
+    throw new Error("Invalid native xcraft_pipewire addon");
   }
 
   function openInputStream(
@@ -112,16 +114,24 @@ function createApi(native) {
     sampleFormat,
     sampleRate,
     frameSize,
-    dataCallback
+    dataCallback,
   ) {
     const resolvedDeviceId = normalizeDeviceId(deviceId);
-    const resolvedChannels = normalizePositiveInteger(channels, 'channels', 1);
+    const resolvedChannels = normalizePositiveInteger(channels, "channels", 1);
     const resolvedSampleFormat = normalizeSampleFormat(sampleFormat);
-    const resolvedSampleRate = normalizePositiveInteger(sampleRate, 'sampleRate', 48000);
-    const resolvedFrameSize = normalizePositiveInteger(frameSize, 'frameSize', 1024);
+    const resolvedSampleRate = normalizePositiveInteger(
+      sampleRate,
+      "sampleRate",
+      48000,
+    );
+    const resolvedFrameSize = normalizePositiveInteger(
+      frameSize,
+      "frameSize",
+      1024,
+    );
 
-    if (typeof dataCallback !== 'function') {
-      throw new TypeError('dataCallback must be a function');
+    if (typeof dataCallback !== "function") {
+      throw new TypeError("dataCallback must be a function");
     }
 
     const nativeStream = native.openInputStream(
@@ -130,14 +140,14 @@ function createApi(native) {
       resolvedSampleFormat,
       resolvedSampleRate,
       resolvedFrameSize,
-      dataCallback
+      dataCallback,
     );
 
     return new InputStream(nativeStream);
   }
 
   function listCaptureNodes() {
-    if (typeof native.listCaptureNodes !== 'function') {
+    if (typeof native.listCaptureNodes !== "function") {
       return [];
     }
 
@@ -153,24 +163,24 @@ function createApi(native) {
   }
 
   function findNode(predicate) {
-    if (typeof predicate !== 'function') {
-      throw new TypeError('predicate must be a function');
+    if (typeof predicate !== "function") {
+      throw new TypeError("predicate must be a function");
     }
 
     return listCaptureNodes().find(predicate) || null;
   }
 
   function findNodeByName(name) {
-    if (typeof name !== 'string') {
-      throw new TypeError('name must be a string');
+    if (typeof name !== "string") {
+      throw new TypeError("name must be a string");
     }
 
     return findNode((node) => node.name === name);
   }
 
   function findNodeByText(text) {
-    if (typeof text !== 'string') {
-      throw new TypeError('text must be a string');
+    if (typeof text !== "string") {
+      throw new TypeError("text must be a string");
     }
 
     const needle = text.toLowerCase();
@@ -201,4 +211,4 @@ module.exports = createApi(loadNative());
 module.exports._createApi = createApi;
 module.exports.InputStream = InputStream;
 
-module.exports.PipeWireCompatibleBackend = require('./lib/audify-compatible');
+module.exports.PipeWireCompatibleBackend = require("./lib/backend.js");
