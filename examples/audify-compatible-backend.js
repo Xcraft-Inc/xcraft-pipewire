@@ -1,6 +1,6 @@
-'use strict';
+"use strict";
 
-const PipeWire = require('../lib/audify-compatible');
+const PipeWire = require("../lib/backend.js");
 
 class PipewireAudifyCompliant {
   #backend;
@@ -48,7 +48,7 @@ class PipewireAudifyCompliant {
     sampleFormat,
     sampleRate,
     frameSize,
-    dataCalllback
+    dataCalllback,
   ) {
     /**
      * Like RtAudio/audify: this only configures the stream.
@@ -60,7 +60,7 @@ class PipewireAudifyCompliant {
       sampleFormat,
       sampleRate,
       frameSize,
-      dataCalllback
+      dataCalllback,
     );
   }
 }
@@ -70,17 +70,17 @@ module.exports = PipewireAudifyCompliant;
 if (require.main === module) {
   const backend = new PipewireAudifyCompliant();
 
-  backend.on('open', (info) => console.log('stream configured', info));
-  backend.on('start', () => console.log('capture started'));
-  backend.on('stop', () => console.log('capture stopped'));
-  backend.on('error', (error) => console.error('capture error', error));
+  backend.on("open", (info) => console.log("stream configured", info));
+  backend.on("start", () => console.log("capture started"));
+  backend.on("stop", () => console.log("capture stopped"));
+  backend.on("error", (error) => console.error("capture error", error));
 
   const devices = backend.getDevices();
   console.log(devices);
 
   const input = devices.find((device) => device.inputChannels > 0);
   if (!input) {
-    console.error('No PipeWire capture node found');
+    console.error("No PipeWire capture node found");
     process.exit(1);
   }
 
@@ -91,12 +91,12 @@ if (require.main === module) {
     input.sampleRate,
     1024,
     (buffer, info) => {
-      console.log('callback chunk', buffer.length, info);
-    }
+      console.log("callback chunk", buffer.length, info);
+    },
   );
 
-  backend.on('data', (buffer, info) => {
-    console.log('event chunk', buffer.length, info.frames);
+  backend.on("data", (buffer, info) => {
+    console.log("event chunk", buffer.length, info.frames);
   });
 
   backend.start();
