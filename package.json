@@ -1,0 +1,37 @@
+{
+  "name": "xcraft-pipewire",
+  "version": "0.1.0",
+  "author": "Epsitec SA",
+  "contributors": [
+    "Samuel Loup <loup@epsitec.ch>"
+  ],
+  "description": "Minimal Node.js N-API PipeWire audio capture addon",
+  "main": "index.js",
+  "gypfile": true,
+  "type": "commonjs",
+  "scripts": {
+    "install": "node-gyp rebuild",
+    "build": "node-gyp rebuild",
+    "test": "node --test test/*.test.js",
+    "test:integration": "PIPEWIRE_CAPTURE_INTEGRATION=1 node --test test/integration.pipewire.test.js",
+    "list": "node examples/list-nodes.js",
+    "audify-example": "node examples/audify-compatible-backend.js"
+  },
+  "dependencies": {
+    "node-addon-api": "^8.3.1"
+  },
+  "devDependencies": {
+    "node-gyp": "^10.2.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "pipewire",
+    "audio",
+    "capture",
+    "napi",
+    "node-addon-api"
+  ],
+  "license": "MIT"
+}
