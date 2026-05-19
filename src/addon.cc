@@ -176,7 +176,7 @@ private:
       tsfn_ = Napi::ThreadSafeFunction::New(
         env,
         callback,
-        "PipeWireCaptureCallback",
+        "XcraftPipeWireCaptureCallback",
         0,
         1
       );
@@ -215,7 +215,7 @@ private:
 
       stream_ = pw_stream_new_simple(
         pw_main_loop_get_loop(loop_),
-        "node-pipewire-capture",
+        "xcraft-pipewire-capture",
         props,
         &streamEvents_,
         this
@@ -761,7 +761,7 @@ Napi::Value ListCaptureNodes(const Napi::CallbackInfo& info) {
   RegistryListState state;
   RegistryListGuard guard(&state);
 
-  state.loop = pw_thread_loop_new("node-pipewire-list-nodes", nullptr);
+  state.loop = pw_thread_loop_new("xcraft-pipewire-list-nodes", nullptr);
   if (!state.loop) {
     Napi::Error::New(env, "pw_thread_loop_new failed").ThrowAsJavaScriptException();
     return env.Null();
@@ -906,4 +906,4 @@ Napi::Object InitAll(Napi::Env env, Napi::Object exports) {
   return exports;
 }
 
-NODE_API_MODULE(pipewire_capture, InitAll)
+NODE_API_MODULE(xcraft_pipewire, InitAll)

@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const enabled = process.env.PIPEWIRE_CAPTURE_INTEGRATION === '1';
+const enabled = process.env.XCRAFT_PIPEWIRE_INTEGRATION === '1';
 
 test('listCaptureNodes returns an array from PipeWire', { skip: !enabled }, () => {
   const {listCaptureNodes} = require('..');

@@ -2,7 +2,7 @@
 
 function loadNative() {
   try {
-    return require('./build/Release/pipewire_capture.node');
+    return require('./build/Release/xcraft_pipewire.node');
   } catch (error) {
     const message = `Native addon is not built or cannot be loaded: ${error.message}`;
 
@@ -103,7 +103,7 @@ function normalizeNodes(nodes) {
 
 function createApi(native) {
   if (!native || typeof native.openInputStream !== 'function') {
-    throw new Error('Invalid native pipewire_capture addon');
+    throw new Error('Invalid native xcraft_pipewire addon');
   }
 
   function openInputStream(

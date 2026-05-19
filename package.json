@@ -1,19 +1,20 @@
 {
   "name": "xcraft-pipewire",
   "version": "0.1.0",
-  "author": "Epsitec SA",
-  "contributors": [
-    "Samuel Loup <loup@epsitec.ch>"
-  ],
-  "description": "Minimal Node.js N-API PipeWire audio capture addon",
+  "description": "Xcraft-flavoured Node.js N-API PipeWire audio capture addon",
   "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./audify-compatible": "./lib/audify-compatible.js",
+    "./lib/audify-compatible": "./lib/audify-compatible.js"
+  },
   "gypfile": true,
   "type": "commonjs",
   "scripts": {
     "install": "node-gyp rebuild",
     "build": "node-gyp rebuild",
     "test": "node --test test/*.test.js",
-    "test:integration": "PIPEWIRE_CAPTURE_INTEGRATION=1 node --test test/integration.pipewire.test.js",
+    "test:integration": "XCRAFT_PIPEWIRE_INTEGRATION=1 node --test test/integration.pipewire.test.js",
     "list": "node examples/list-nodes.js",
     "audify-example": "node examples/audify-compatible-backend.js"
   },

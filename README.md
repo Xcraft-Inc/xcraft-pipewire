@@ -1,28 +1,21 @@
-# pipewire-capture
+# xcraft-pipewire
 
 Minimal Node.js N-API PipeWire audio capture addon.
 
-It exposes two layers:
-
-- low-level PipeWire helpers: `openInputStream()`, `listCaptureNodes()`
-- an audify-compatible backend: `lib/audify-compatible.js`
-
 ## Install
 
-```sh
+```bash
 sudo apt install build-essential pkg-config libpipewire-0.3-dev
 npm install
 ```
 
-## Low-level usage
+## Low-level API
 
 ```js
-const { openInputStream, listInputNodes } = require('pipewire-capture');
+const pipewire = require('xcraft-pipewire');
 
-const input = listInputNodes()[0];
-
-const stream = openInputStream(
-  input?.name || '',
+const stream = pipewire.openInputStream(
+  'alsa_input.example.source',
   1,
   'f32',
   48000,
@@ -32,73 +25,85 @@ const stream = openInputStream(
   }
 );
 
-process.once('SIGINT', () => {
-  stream.close();
-  process.exit(0);
-});
+stream.close();
 ```
+
+The low-level API starts capture immediately.
 
 ## Audify-compatible backend
 
-This backend follows the shape used by the existing `xcraft-audify` wrapper:
+```js
+const PipeWire = require('xcraft-pipewire/lib/audify-compatible');
+
+const audio = new PipeWire();
+const devices = audio.getDevices();
+const input = devices.find((device) => device.inputChannels > 0);
+
+audio.openInputStream(
+  input.id,
+  1,
+  audio.SampleFormat.FLOAT32,
+  input.sampleRate,
+  1024,
+  (buffer, info) => {
+    console.log('callback', buffer.length, info);
+  }
+);
+
+// openInputStream only configures the stream.
+// Capture really starts here.
+audio.start();
+
+audio.stop();
+audio.closeStream();
+```
+
+The audify-compatible backend is an `EventEmitter`:
 
 ```js
-const PipeWire = require('pipewire-capture/lib/audify-compatible');
+audio.on('open', (info) => console.log('configured', info));
+audio.on('start', () => console.log('started'));
+audio.on('data', (buffer, info) => console.log('data', buffer.length, info));
+audio.on('stop', () => console.log('stopped'));
+audio.on('close', () => console.log('closed'));
+audio.on('error', (error) => console.error(error));
+```
 
-class AudioBackend {
-  #pipewire = new PipeWire();
+## Devices
 
-  get SampleFormat() {
-    return this.#pipewire.SampleFormat;
-  }
+```js
+const devices = audio.getDevices();
+```
 
-  getDevices() {
-    return this.#pipewire.getDevices();
-  }
+Each returned device is shaped like:
 
-  start() {
-    this.#pipewire.start();
-  }
-
-  stop() {
-    this.#pipewire.stop();
-  }
-
-  openInputStream(deviceId, channels, sampleFormat, sampleRate, frameSize, dataCalllback) {
-    this.#pipewire.openInputStream(
-      deviceId,
-      channels,
-      sampleFormat,
-      sampleRate,
-      frameSize,
-      dataCalllback
-    );
-  }
+```js
+{
+  id,
+  nativeId,
+  name,
+  nodeName,
+  inputChannels,
+  outputChannels,
+  sampleRate,
+  isDefaultInput,
+  isDefaultOutput,
+  isCapture,
+  isSink,
+  raw
 }
 ```
 
-The native PipeWire addon currently supports:
-
-- `SampleFormat.SINT16`
-- `SampleFormat.FLOAT32`
-
-The compatibility backend exposes `SINT8`, `SINT24` and `SINT32` for API shape compatibility, but rejects them explicitly until the native addon implements those formats.
-
-## Examples
-
-```sh
-npm run list
-node examples/audify-compatible-backend.js
-```
+`id` is intentionally the PipeWire `node.name`, because it is more useful than the volatile numeric PipeWire object id for reopening streams.
 
 ## Tests
 
-```sh
+```bash
 npm test
 ```
 
-PipeWire integration tests are opt-in:
+Integration tests against a real PipeWire server are opt-in:
 
-```sh
-PIPEWIRE_CAPTURE_INTEGRATION=1 npm test
+```bash
+XCRAFT_PIPEWIRE_INTEGRATION=1 npm test
 ```
