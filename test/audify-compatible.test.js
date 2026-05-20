@@ -3,7 +3,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const compat = require("../lib/backend.js");
+const compat = require("../lib/backend");
 const { _internals } = compat;
 
 test("audify-compatible exposes RtAudio-like sample format names", () => {

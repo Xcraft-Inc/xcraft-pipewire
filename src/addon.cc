@@ -1,7 +1,6 @@
 #include <napi.h>
 
 #include <atomic>
-#include <chrono>
 #include <cstdlib>
 #include <cstring>
 #include <mutex>
@@ -21,6 +20,13 @@ struct AudioChunk {
   std::string sampleFormat;
 };
 
+static void EnsurePipeWireInitialized() {
+  static std::once_flag once;
+  std::call_once(once, []() {
+    pw_init(nullptr, nullptr);
+  });
+}
+
 static std::string DictValue(const struct spa_dict* props, const char* key) {
   if (!props || !key) {
     return "";
@@ -30,116 +36,40 @@ static std::string DictValue(const struct spa_dict* props, const char* key) {
   return value ? value : "";
 }
 
-class PipeWireInputStream : public Napi::ObjectWrap<PipeWireInputStream> {
+static enum spa_audio_format ToSpaFormat(const std::string& sampleFormat) {
+  if (sampleFormat == "f32" || sampleFormat == "float32") {
+    return SPA_AUDIO_FORMAT_F32;
+  }
+
+  if (sampleFormat == "s16" || sampleFormat == "int16") {
+    return SPA_AUDIO_FORMAT_S16;
+  }
+
+  return SPA_AUDIO_FORMAT_UNKNOWN;
+}
+
+static uint32_t BytesPerSample(const std::string& sampleFormat) {
+  if (sampleFormat == "f32" || sampleFormat == "float32") {
+    return 4;
+  }
+
+  if (sampleFormat == "s16" || sampleFormat == "int16") {
+    return 2;
+  }
+
+  return 0;
+}
+
+class NativeInputStream {
 public:
-  static Napi::Object Init(Napi::Env env, Napi::Object exports) {
-    Napi::Function ctor = DefineClass(env, "PipeWireInputStream", {
-      InstanceMethod("close", &PipeWireInputStream::CloseWrapped)
-    });
+  NativeInputStream() = default;
 
-    constructor = Napi::Persistent(ctor);
-    constructor.SuppressDestruct();
-
-    exports.Set("PipeWireInputStream", ctor);
-    return exports;
+  ~NativeInputStream() {
+    CloseNativeOnly();
   }
 
-  static void EnsurePipeWireInitialized() {
-    static std::once_flag once;
-    std::call_once(once, []() {
-      pw_init(nullptr, nullptr);
-    });
-  }
-
-  static Napi::Object NewInstance(
-    Napi::Env env,
-    const std::string& deviceId,
-    uint32_t channels,
-    const std::string& sampleFormat,
-    uint32_t sampleRate,
-    uint32_t frameSize,
-    Napi::Function callback
-  ) {
-    /*
-      Do not create an EscapableHandleScope here.
-      NewInstance() is called from an exported native callback which already
-      owns the lifetime of the return value. Some Node/N-API builds do not
-      have an active HandleScope at this point unless the exported callback
-      creates one explicitly; creating an EscapableHandleScope here can crash
-      with:
-        v8::HandleScope::CreateHandle() Cannot create a handle without a HandleScope
-    */
-    Napi::Object obj = constructor.New({});
-    auto* self = Napi::ObjectWrap<PipeWireInputStream>::Unwrap(obj);
-
-    self->Start(
-      env,
-      deviceId,
-      channels,
-      sampleFormat,
-      sampleRate,
-      frameSize,
-      callback
-    );
-
-    return obj;
-  }
-
-  PipeWireInputStream(const Napi::CallbackInfo& info)
-    : Napi::ObjectWrap<PipeWireInputStream>(info) {
-  }
-
-  ~PipeWireInputStream() override {
-    DisposeFromDestructor();
-  }
-
-private:
-  static Napi::FunctionReference constructor;
-
-  struct pw_main_loop* loop_ = nullptr;
-  struct pw_stream* stream_ = nullptr;
-
-  struct spa_audio_info format_ = {};
-  struct pw_stream_events streamEvents_ = {};
-
-  std::thread loopThread_;
-  std::mutex lifecycleMutex_;
-
-  std::atomic<bool> closing_{false};
-  std::atomic<bool> closed_{true};
-  std::atomic<bool> tsfnCreated_{false};
-  std::atomic<bool> objectReferenced_{false};
-
-  Napi::ThreadSafeFunction tsfn_;
-
-  std::string sampleFormat_;
-  uint32_t requestedChannels_ = 0;
-  uint32_t requestedSampleRate_ = 0;
-  uint32_t frameSize_ = 0;
-
-  static enum spa_audio_format ToSpaFormat(const std::string& sampleFormat) {
-    if (sampleFormat == "f32" || sampleFormat == "float32") {
-      return SPA_AUDIO_FORMAT_F32;
-    }
-
-    if (sampleFormat == "s16" || sampleFormat == "int16") {
-      return SPA_AUDIO_FORMAT_S16;
-    }
-
-    return SPA_AUDIO_FORMAT_UNKNOWN;
-  }
-
-  static uint32_t BytesPerSample(const std::string& sampleFormat) {
-    if (sampleFormat == "f32" || sampleFormat == "float32") {
-      return 4;
-    }
-
-    if (sampleFormat == "s16" || sampleFormat == "int16") {
-      return 2;
-    }
-
-    return 0;
-  }
+  NativeInputStream(const NativeInputStream&) = delete;
+  NativeInputStream& operator=(const NativeInputStream&) = delete;
 
   void Start(
     Napi::Env env,
@@ -160,14 +90,12 @@ private:
     }
 
     if (channels == 0) {
-      Napi::TypeError::New(env, "channels must be > 0")
-        .ThrowAsJavaScriptException();
+      Napi::TypeError::New(env, "channels must be > 0").ThrowAsJavaScriptException();
       return;
     }
 
     if (sampleRate == 0) {
-      Napi::TypeError::New(env, "sampleRate must be > 0")
-        .ThrowAsJavaScriptException();
+      Napi::TypeError::New(env, "sampleRate must be > 0").ThrowAsJavaScriptException();
       return;
     }
 
@@ -175,9 +103,6 @@ private:
     requestedChannels_ = channels;
     requestedSampleRate_ = sampleRate;
     frameSize_ = frameSize;
-
-    Ref();
-    objectReferenced_ = true;
 
     try {
       tsfn_ = Napi::ThreadSafeFunction::New(
@@ -196,8 +121,8 @@ private:
 
       streamEvents_ = {};
       streamEvents_.version = PW_VERSION_STREAM_EVENTS;
-      streamEvents_.process = &PipeWireInputStream::OnProcess;
-      streamEvents_.param_changed = &PipeWireInputStream::OnParamChanged;
+      streamEvents_.process = &NativeInputStream::OnProcess;
+      streamEvents_.param_changed = &NativeInputStream::OnParamChanged;
 
       struct pw_properties* props = pw_properties_new(
         PW_KEY_MEDIA_TYPE, "Audio",
@@ -231,8 +156,7 @@ private:
       if (!stream_) {
         /*
           pw_stream_new_simple() takes ownership of props, including on failure.
-          Do not call pw_properties_free(props) here, otherwise we risk a double free
-          on older/newer PipeWire builds that follow the documented ownership rule.
+          Do not call pw_properties_free(props) here.
         */
         throw std::runtime_error("pw_stream_new_simple failed");
       }
@@ -284,6 +208,81 @@ private:
     }
   }
 
+  void AttachToObject(Napi::Env env, Napi::Object object) {
+    napi_status status = napi_wrap(
+      env,
+      object,
+      this,
+      &NativeInputStream::Finalize,
+      nullptr,
+      nullptr
+    );
+
+    if (status != napi_ok) {
+      throw std::runtime_error("napi_wrap failed");
+    }
+
+    status = napi_create_reference(env, object, 1, &strongRef_);
+    if (status != napi_ok) {
+      throw std::runtime_error("napi_create_reference failed");
+    }
+  }
+
+  void CloseAndReleaseJsRef(napi_env env) {
+    CloseNativeOnly();
+
+    napi_ref ref = nullptr;
+    {
+      std::lock_guard<std::mutex> lock(refMutex_);
+      ref = strongRef_;
+      strongRef_ = nullptr;
+    }
+
+    if (ref) {
+      napi_delete_reference(env, ref);
+    }
+  }
+
+  static Napi::Value CloseWrapped(const Napi::CallbackInfo& info) {
+    auto* self = static_cast<NativeInputStream*>(info.Data());
+    if (self) {
+      self->CloseAndReleaseJsRef(info.Env());
+    }
+
+    return info.Env().Undefined();
+  }
+
+private:
+  struct pw_main_loop* loop_ = nullptr;
+  struct pw_stream* stream_ = nullptr;
+
+  struct spa_audio_info format_ = {};
+  struct pw_stream_events streamEvents_ = {};
+
+  std::thread loopThread_;
+  std::mutex lifecycleMutex_;
+  std::mutex refMutex_;
+
+  std::atomic<bool> closing_{false};
+  std::atomic<bool> closed_{true};
+  std::atomic<bool> tsfnCreated_{false};
+
+  Napi::ThreadSafeFunction tsfn_;
+  napi_ref strongRef_ = nullptr;
+
+  std::string sampleFormat_;
+  uint32_t requestedChannels_ = 0;
+  uint32_t requestedSampleRate_ = 0;
+  uint32_t frameSize_ = 0;
+
+  static void Finalize(napi_env env, void* data, void* hint) {
+    (void)env;
+    (void)hint;
+
+    auto* self = static_cast<NativeInputStream*>(data);
+    delete self;
+  }
+
   void RunLoopAndCleanup() {
     if (loop_) {
       pw_main_loop_run(loop_);
@@ -325,15 +324,6 @@ private:
       tsfn_.Release();
       tsfnCreated_ = false;
     }
-
-    if (objectReferenced_) {
-      Unref();
-      objectReferenced_ = false;
-    }
-  }
-
-  void DisposeFromDestructor() {
-    CloseNativeOnly();
   }
 
   void CloseNativeOnly() {
@@ -358,23 +348,12 @@ private:
     closed_ = true;
   }
 
-  Napi::Value CloseWrapped(const Napi::CallbackInfo& info) {
-    CloseNativeOnly();
-
-    if (objectReferenced_) {
-      Unref();
-      objectReferenced_ = false;
-    }
-
-    return info.Env().Undefined();
-  }
-
   static void OnParamChanged(
     void* userdata,
     uint32_t id,
     const struct spa_pod* param
   ) {
-    auto* self = static_cast<PipeWireInputStream*>(userdata);
+    auto* self = static_cast<NativeInputStream*>(userdata);
 
     if (param == nullptr || id != SPA_PARAM_Format) {
       return;
@@ -399,7 +378,7 @@ private:
   }
 
   static void OnProcess(void* userdata) {
-    auto* self = static_cast<PipeWireInputStream*>(userdata);
+    auto* self = static_cast<NativeInputStream*>(userdata);
 
     if (self->closing_ || self->closed_) {
       return;
@@ -476,7 +455,7 @@ private:
 
           jsCallback.Call({buffer, info});
         } catch (...) {
-          // Intentionally swallowed. A future EventEmitter wrapper should surface callback errors.
+          // Keep native teardown safe even if the JS callback throws.
         }
 
         delete chunk;
@@ -488,8 +467,6 @@ private:
     }
   }
 };
-
-Napi::FunctionReference PipeWireInputStream::constructor;
 
 struct ListedNode {
   uint32_t id = 0;
@@ -545,7 +522,7 @@ struct RegistryListGuard {
       return;
     }
 
-    if (state->loopLocked) {
+    if (state->loopLocked && state->loop) {
       pw_thread_loop_unlock(state->loop);
       state->loopLocked = false;
     }
@@ -762,9 +739,8 @@ static Napi::Object NodeToObject(Napi::Env env, const ListedNode& node) {
 
 Napi::Value ListCaptureNodes(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
-  Napi::HandleScope scope(env);
 
-  PipeWireInputStream::EnsurePipeWireInitialized();
+  EnsurePipeWireInitialized();
 
   RegistryListState state;
   RegistryListGuard guard(&state);
@@ -843,7 +819,6 @@ Napi::Value ListCaptureNodes(const Napi::CallbackInfo& info) {
 
 Napi::Value OpenInputStream(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
-  Napi::HandleScope scope(env);
 
   if (info.Length() < 6) {
     Napi::TypeError::New(
@@ -888,20 +863,43 @@ Napi::Value OpenInputStream(const Napi::CallbackInfo& info) {
   uint32_t frameSize = info[4].As<Napi::Number>().Uint32Value();
   Napi::Function callback = info[5].As<Napi::Function>();
 
-  return PipeWireInputStream::NewInstance(
-    env,
-    deviceId,
-    channels,
-    sampleFormat,
-    sampleRate,
-    frameSize,
-    callback
-  );
+  auto* stream = new NativeInputStream();
+
+  try {
+    stream->Start(
+      env,
+      deviceId,
+      channels,
+      sampleFormat,
+      sampleRate,
+      frameSize,
+      callback
+    );
+
+    if (env.IsExceptionPending()) {
+      delete stream;
+      return env.Null();
+    }
+
+    Napi::Object object = Napi::Object::New(env);
+    object.Set("close", Napi::Function::New(
+      env,
+      NativeInputStream::CloseWrapped,
+      "close",
+      stream
+    ));
+
+    stream->AttachToObject(env, object);
+
+    return object;
+  } catch (const std::exception& ex) {
+    delete stream;
+    Napi::Error::New(env, ex.what()).ThrowAsJavaScriptException();
+    return env.Null();
+  }
 }
 
 Napi::Object InitAll(Napi::Env env, Napi::Object exports) {
-  PipeWireInputStream::Init(env, exports);
-
   exports.Set(
     "openInputStream",
     Napi::Function::New(env, OpenInputStream)
