@@ -60,8 +60,15 @@ public:
     uint32_t frameSize,
     Napi::Function callback
   ) {
-    Napi::EscapableHandleScope scope(env);
-
+    /*
+      Do not create an EscapableHandleScope here.
+      NewInstance() is called from an exported native callback which already
+      owns the lifetime of the return value. Some Node/N-API builds do not
+      have an active HandleScope at this point unless the exported callback
+      creates one explicitly; creating an EscapableHandleScope here can crash
+      with:
+        v8::HandleScope::CreateHandle() Cannot create a handle without a HandleScope
+    */
     Napi::Object obj = constructor.New({});
     auto* self = Napi::ObjectWrap<PipeWireInputStream>::Unwrap(obj);
 
@@ -75,7 +82,7 @@ public:
       callback
     );
 
-    return scope.Escape(obj).ToObject();
+    return obj;
   }
 
   PipeWireInputStream(const Napi::CallbackInfo& info)
@@ -755,6 +762,7 @@ static Napi::Object NodeToObject(Napi::Env env, const ListedNode& node) {
 
 Napi::Value ListCaptureNodes(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
+  Napi::HandleScope scope(env);
 
   PipeWireInputStream::EnsurePipeWireInitialized();
 
@@ -835,6 +843,7 @@ Napi::Value ListCaptureNodes(const Napi::CallbackInfo& info) {
 
 Napi::Value OpenInputStream(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
+  Napi::HandleScope scope(env);
 
   if (info.Length() < 6) {
     Napi::TypeError::New(
